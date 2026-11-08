@@ -1,0 +1,30 @@
+﻿[package]
+name = "meeting-scribe"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "scribe"
+path = "src/main.rs"
+
+[features]
+default = ["vulkan"]
+# GPU backends for whisper.cpp. Build CPU-only with: cargo build --release --no-default-features --features stt
+stt = ["dep:whisper-rs"]
+vulkan = ["stt", "whisper-rs/vulkan"]
+cuda = ["stt", "whisper-rs/cuda"]
+
+[dependencies]
+whisper-rs = { version = "0.16", optional = true }
+hound = "3.5"
+docx-rs = "0.4"
+clap = { version = "4", features = ["derive"] }
+ctrlc = "3"
+chrono = "0.4"
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+lto = true
+codegen-units = 1
