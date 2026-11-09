@@ -1,4 +1,5 @@
 mod docx_out;
+mod hinglish;
 mod manglish;
 mod minutes;
 mod record;
@@ -96,10 +97,10 @@ fn transcribe_and_write(dir: &Path, model: &Path, stt: &SttOpts) -> Result<()> {
 }
 
 fn write_docx(dir: &Path, segs: &[Segment]) -> Result<()> {
-    // transcript.json keeps the original script; the document is written in Manglish
+    // transcript.json keeps the original script; the document is written in Manglish / Hinglish
     let segs: Vec<Segment> = segs
         .iter()
-        .map(|s| Segment { text: manglish::to_manglish(&s.text), ..s.clone() })
+        .map(|s| Segment { text: hinglish::to_hinglish(&manglish::to_manglish(&s.text)), ..s.clone() })
         .collect();
     let segs = &segs[..];
     let name = dir.file_name().map(|n| n.to_string_lossy().replace('_', " ")).unwrap_or_default();

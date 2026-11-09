@@ -51,7 +51,8 @@ written (`--keep-audio` to keep them), and the Whisper model is unloaded from GP
 document is built; the program then exits.
 
 - `--lang en` / `--lang ml` / `--lang hi` forces a language (default `auto`). Auto-detection only
-  chooses between these three, so Malayalam dialects aren't mistaken for Tamil.
+  chooses between these three: Whisper's guesses of Tamil/Telugu/Kannada count as Malayalam and
+  Urdu/Marathi/etc. as Hindi. Run with `SCRIBE_DEBUG=1` to print Whisper's guesses per 30 s.
 - `scribe transcribe <folder>` re-runs transcription if you kept the audio (or it failed).
 - `scribe summarize <folder>` rebuilds the minutes from `transcript.json`, e.g. after you edit the
   cue-word lists at the top of `src/minutes.rs` and reinstall.
@@ -59,8 +60,9 @@ document is built; the program then exits.
 ## Good to know
 
 - Malayalam speech is written in **Manglish** in the .docx (e.g. "ente report naale ayakkaam"),
-  converted from Malayalam script by spelling rules in `src/manglish.rs`. `transcript.json` keeps
-  the original script.
+  converted from Malayalam script by spelling rules in `src/manglish.rs`. Hindi is written in
+  **Hinglish** ("main kal report bhejunga") by `src/hinglish.rs`. `transcript.json` keeps the
+  original script.
 
 - Labels are **Me** (your mic) and **Others** (call audio); individual remote speakers aren't told apart.
 - Speakers instead of headphones work: echo of the others picked up by your mic is removed by

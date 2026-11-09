@@ -17,17 +17,31 @@ const RATE: usize = 16_000;
 const WINDOW: usize = 30 * RATE; // Whisper's native window; language is detected per window
 const SILENCE_RMS: f32 = 0.005;
 
-/// Languages auto-detection may choose from. Whisper's own detector picks from ~100
-/// languages and mistakes some Malayalam dialects for Tamil, so we only accept these.
+/// Languages auto-detection may choose from.
 pub const LANGS: [&str; 3] = ["en", "ml", "hi"];
 
-/// Picks the most likely language among `LANGS`, given (code, probability) pairs.
+/// Which allowed language a Whisper language code counts towards. Whisper often labels
+/// Malayalam dialects as Tamil (or another Dravidian language) and Hindi as Urdu etc.,
+/// so their probability is added to Malayalam / Hindi instead of being thrown away.
+fn family(code: &str) -> Option<&'static str> {
+    Some(match code {
+        "en" => "en",
+        "ml" | "ta" | "te" | "kn" => "ml",
+        "hi" | "ur" | "pa" | "mr" | "ne" | "gu" | "bn" | "sa" | "sd" => "hi",
+        _ => return None,
+    })
+}
+
+/// Picks English, Malayalam or Hindi from Whisper's (code, probability) pairs.
 pub fn pick_lang<'a>(probs: impl IntoIterator<Item = (&'a str, f32)>) -> &'static str {
-    probs
-        .into_iter()
-        .filter_map(|(code, p)| LANGS.iter().find(|l| **l == code).map(|l| (*l, p)))
-        .max_by(|a, b| a.1.total_cmp(&b.1))
-        .map_or(LANGS[0], |(l, _)| l)
+    let mut score = [0f32; LANGS.len()];
+    for (code, p) in probs {
+        if let Some(f) = family(code) {
+            score[LANGS.iter().position(|l| *l == f).unwrap()] += p;
+        }
+    }
+    let best = (0..LANGS.len()).max_by(|&a, &b| score[a].total_cmp(&score[b])).unwrap();
+    if score[best] > 0.0 { LANGS[best] } else { LANGS[0] }
 }
 
 pub fn is_silent(samples: &[f32]) -> bool {
@@ -81,10 +95,20 @@ pub fn transcribe_dir(dir: &Path, model: &Path, lang: &str) -> Result<Vec<Segmen
                 // Run Whisper's detector, then choose only among LANGS (not Tamil etc.)
                 state.pcm_to_mel(chunk, threads)?;
                 let (_, probs) = state.lang_detect(0, threads)?;
-                pick_lang(LANGS.map(|l| {
-                    let p = whisper_rs::get_lang_id(l).map_or(0.0, |id| probs[id as usize]);
-                    (l, p)
-                }))
+                let named: Vec<(&str, f32)> = probs
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(id, p)| Some((whisper_rs::get_lang_str(id as i32)?, *p)))
+                    .collect();
+                let chosen = pick_lang(named.iter().copied());
+                if std::env::var_os("SCRIBE_DEBUG").is_some() {
+                    let mut top = named.clone();
+                    top.sort_by(|a, b| b.1.total_cmp(&a.1));
+                    let top: Vec<String> =
+                        top.iter().take(4).map(|(l, p)| format!("{l} {:.2}", p)).collect();
+                    eprintln!("\n  [{}] Whisper: {}  -> {chosen}", w * 30, top.join(", "));
+                }
+                chosen
             } else {
                 lang
             };
@@ -138,10 +162,16 @@ mod tests {
 
     #[test]
     fn language_limited_to_en_ml_hi() {
-        // Tamil scores highest, but isn't allowed: Malayalam wins
         assert_eq!(pick_lang([("ta", 0.6), ("ml", 0.3), ("en", 0.1)]), "ml");
         assert_eq!(pick_lang([("hi", 0.5), ("ur", 0.4), ("en", 0.1)]), "hi");
         assert_eq!(pick_lang([("en", 0.9), ("ml", 0.05)]), "en");
-        assert_eq!(pick_lang([("ta", 1.0)]), "en"); // nothing allowed scored: fall back to English
+        assert_eq!(pick_lang([("ja", 1.0)]), "en"); // nothing relevant scored: English
+    }
+
+    #[test]
+    fn malayalam_dialect_heard_as_tamil_stays_malayalam() {
+        // Tamil dominates and Malayalam itself barely registers; Hindi must not win
+        assert_eq!(pick_lang([("ta", 0.80), ("hi", 0.06), ("ml", 0.03), ("en", 0.05)]), "ml");
+        assert_eq!(pick_lang([("ur", 0.5), ("hi", 0.2), ("en", 0.3)]), "hi");
     }
 }
