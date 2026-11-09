@@ -26,6 +26,10 @@ struct SttOpts {
     /// Whisper ggml model file
     #[arg(long)]
     model: Option<PathBuf>,
+    /// Malayalam fine-tuned ggml model, used for Malayalam windows
+    /// [default: ~/.local/share/meeting-scribe/ggml-malayalam.bin if it exists]
+    #[arg(long)]
+    ml_model: Option<PathBuf>,
     /// Keep mic.wav / system.wav after the .docx is written
     #[arg(long)]
     keep_audio: bool,
@@ -64,10 +68,24 @@ fn model_path(stt: &SttOpts) -> Result<PathBuf> {
     Ok(p)
 }
 
+fn ml_model_path(stt: &SttOpts) -> Result<Option<PathBuf>> {
+    match &stt.ml_model {
+        Some(p) => {
+            ensure!(p.exists(), "Malayalam model not found at {}", p.display());
+            Ok(Some(p.clone()))
+        }
+        None => {
+            let p = home().join(".local/share/meeting-scribe/ggml-malayalam.bin");
+            Ok(p.exists().then_some(p))
+        }
+    }
+}
+
 fn main() -> Result<()> {
     match Cli::parse().cmd {
         Cmd::Record { stt, out } => {
             let model = model_path(&stt)?; // fail before the meeting, not after
+            ml_model_path(&stt)?;
             let stamp = chrono::Local::now().format("%Y-%m-%d_%H%M").to_string();
             let dir = out.unwrap_or_else(|| home().join("Documents/Meetings")).join(&stamp);
             std::fs::create_dir_all(&dir)?;
@@ -86,7 +104,12 @@ fn main() -> Result<()> {
 
 fn transcribe_and_write(dir: &Path, model: &Path, stt: &SttOpts) -> Result<()> {
     println!("Transcribing (Ctrl+C again to abort; audio is kept)…");
-    let segs = transcribe::transcribe_dir(dir, model, &stt.lang)?; // model freed on return
+    let ml_model = ml_model_path(stt)?;
+    if let Some(m) = &ml_model {
+        println!("Malayalam model: {}", m.display());
+    }
+    // models freed on return
+    let segs = transcribe::transcribe_dir(dir, model, ml_model.as_deref(), &stt.lang)?;
     let segs = minutes::remove_echo(segs);
     std::fs::write(dir.join("transcript.json"), serde_json::to_vec_pretty(&segs)?)?;
     write_docx(dir, &segs)?;

@@ -68,18 +68,27 @@ pub fn load_wav(path: &Path) -> Result<Vec<f32>> {
         .collect()
 }
 
-/// Transcribes mic.wav (Me) and system.wav (Others). The Whisper model is dropped
-/// when this returns, freeing its VRAM/RAM before the rest of the pipeline runs.
 #[cfg(feature = "stt")]
-pub fn transcribe_dir(dir: &Path, model: &Path, lang: &str) -> Result<Vec<Segment>> {
-    use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
-
+fn load_model(model: &Path) -> Result<whisper_rs::WhisperState> {
+    use whisper_rs::{WhisperContext, WhisperContextParameters};
     let ctx = WhisperContext::new_with_params(
         model.to_str().context("model path is not UTF-8")?,
         WhisperContextParameters::default(),
     )
     .with_context(|| format!("loading Whisper model {}", model.display()))?;
-    let mut state = ctx.create_state()?;
+    Ok(ctx.create_state()?) // the state keeps the model alive
+}
+
+/// Transcribes mic.wav (Me) and system.wav (Others). `model` detects the language and
+/// transcribes English/Hindi; Malayalam windows go to `ml_model` (a Malayalam fine-tune)
+/// when given, loaded on first use. Both models are dropped when this returns, freeing
+/// their VRAM/RAM before the rest of the pipeline runs.
+#[cfg(feature = "stt")]
+pub fn transcribe_dir(dir: &Path, model: &Path, ml_model: Option<&Path>, lang: &str) -> Result<Vec<Segment>> {
+    use whisper_rs::{FullParams, SamplingStrategy};
+
+    let mut state = load_model(model)?;
+    let mut ml_state = None;
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
     let mut out = Vec::new();
 
@@ -120,9 +129,18 @@ pub fn transcribe_dir(dir: &Path, model: &Path, lang: &str) -> Result<Vec<Segmen
             p.set_print_realtime(false);
             p.set_print_special(false);
             p.set_print_timestamps(false);
-            state.full(p, chunk)?;
+            let st = match ml_model {
+                Some(m) if detected == "ml" => {
+                    if ml_state.is_none() {
+                        ml_state = Some(load_model(m)?);
+                    }
+                    ml_state.as_mut().unwrap()
+                }
+                _ => &mut state,
+            };
+            st.full(p, chunk)?;
             let offset = (w * WINDOW * 1000 / RATE) as i64;
-            for seg in state.as_iter() {
+            for seg in st.as_iter() {
                 let text = seg.to_str_lossy()?.trim().to_string();
                 if text.is_empty() || text.starts_with('[') || text.starts_with('(') {
                     continue; // [Music], (silence) etc.
@@ -144,7 +162,7 @@ pub fn transcribe_dir(dir: &Path, model: &Path, lang: &str) -> Result<Vec<Segmen
 }
 
 #[cfg(not(feature = "stt"))]
-pub fn transcribe_dir(_: &Path, _: &Path, _: &str) -> Result<Vec<Segment>> {
+pub fn transcribe_dir(_: &Path, _: &Path, _: Option<&Path>, _: &str) -> Result<Vec<Segment>> {
     anyhow::bail!("built without speech-to-text; rebuild with default features")
 }
 

@@ -29,7 +29,10 @@ Whisper model (one download, ~1.6 GB; after this nothing touches the network):
 mkdir -p ~/.local/share/meeting-scribe && curl -L -o ~/.local/share/meeting-scribe/ggml-large-v3-turbo.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin
 ```
 
-For better Malayalam, also get `ggml-large-v3.bin` (~3 GB) the same way and pass `--model`.
+Malayalam: stock Whisper is weak at it, even large-v3. Download a Malayalam fine-tuned ggml model
+(e.g. the Q8_0 ggml file from huggingface.co/sajilck/whisper-small-malayalam-v2) and save it as
+`~/.local/share/meeting-scribe/ggml-malayalam.bin`. Windows detected as Malayalam are then
+transcribed with it (or pass `--ml-model PATH`); English and Hindi still use the main model.
 
 Build and install:
 
