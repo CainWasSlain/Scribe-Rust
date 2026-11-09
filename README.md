@@ -1,7 +1,7 @@
 # meeting-scribe
 
 Records any Zoom / Google Meet / Teams call on Fedora (your mic + whatever the laptop plays),
-transcribes it **offline** with Whisper (English, Malayalam, auto-detected per 30 s), and writes
+transcribes it **offline** with Whisper (English, Malayalam or Hindi, auto-detected per 30 s), and writes
 `transcript.docx` with minutes: topics, summary, key points, decisions, action items, and the full
 transcript with key lines highlighted. No cloud, no AI summarizer — the minutes are rule-based.
 
@@ -50,7 +50,8 @@ Join your call, talk, press **Ctrl+C** when it ends. Output lands in
 written (`--keep-audio` to keep them), and the Whisper model is unloaded from GPU/RAM before the
 document is built; the program then exits.
 
-- `--lang en` / `--lang ml` forces a language (default `auto`).
+- `--lang en` / `--lang ml` / `--lang hi` forces a language (default `auto`). Auto-detection only
+  chooses between these three, so Malayalam dialects aren't mistaken for Tamil.
 - `scribe transcribe <folder>` re-runs transcription if you kept the audio (or it failed).
 - `scribe summarize <folder>` rebuilds the minutes from `transcript.json`, e.g. after you edit the
   cue-word lists at the top of `src/minutes.rs` and reinstall.

@@ -19,8 +19,8 @@ struct Cli {
 
 #[derive(clap::Args)]
 struct SttOpts {
-    /// Spoken language: auto-detect per 30 s, or force English / Malayalam
-    #[arg(long, default_value = "auto", value_parser = ["auto", "en", "ml"])]
+    /// Spoken language: auto-detect per 30 s (English, Malayalam or Hindi only), or force one
+    #[arg(long, default_value = "auto", value_parser = ["auto", "en", "ml", "hi"])]
     lang: String,
     /// Whisper ggml model file
     #[arg(long)]
